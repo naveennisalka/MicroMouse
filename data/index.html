@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🤖 MicroMouse Dashboard</title>
+<style>
+  /* ── Reset & base ─────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    min-height: 100vh;
+    padding: 12px;
+  }
+
+  /* ── Layout ──────────────────────────────────────────────── */
+  h1 {
+    text-align: center;
+    font-size: 1.4rem;
+    margin-bottom: 12px;
+    color: #58a6ff;
+    letter-spacing: 2px;
+  }
+  .dashboard {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 12px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  @media (max-width: 720px) {
+    .dashboard { grid-template-columns: 1fr; }
+  }
+
+  /* ── Cards ───────────────────────────────────────────────── */
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .card h2 {
+    font-size: 0.85rem;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #21262d;
+    padding-bottom: 6px;
+  }
+
+  /* ── Maze canvas ─────────────────────────────────────────── */
+  #maze-canvas {
+    display: block;
+    width: 100%;
+    max-width: 480px;
+    aspect-ratio: 1;
+    margin: 0 auto;
+    border: 2px solid #30363d;
+    border-radius: 6px;
+    background: #0d1117;
+    cursor: pointer;
+  }
+  #maze-info {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #8b949e;
+    margin-top: 6px;
+  }
+
+  /* ── Status pills ────────────────────────────────────────── */
+  .status-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .pill {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    background: #21262d;
+    color: #8b949e;
+  }
+  .pill.active { background: #1f6feb; color: #fff; }
+  .pill.green  { background: #238636; color: #fff; }
+  .pill.red    { background: #da3633; color: #fff; }
+  .pill.yellow { background: #9e6a03; color: #fff; }
+
+  /* ── ToF sensor bars ────────────────────────────────────────*/
+  .sensor-group { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 12px; }
+  .sensor {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .sensor label { font-size: 0.72rem; color: #8b949e; }
+  .bar-wrap {
+    width: 100%;
+    height: 60px;
+    background: #21262d;
+    border-radius: 4px;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+  }
+  .bar-fill {
+    width: 100%;
+    transition: height 0.2s, background 0.2s;
+    border-radius: 4px 4px 0 0;
+  }
+  .sensor .val { font-size: 0.85rem; font-weight: 700; font-family: monospace; }
+
+  /* ── Speed / telemetry ───────────────────────────────────── */
+  .telem-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .telem-item {
+    background: #21262d;
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .telem-item .label { font-size: 0.7rem; color: #8b949e; }
+  .telem-item .value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-family: monospace;
+    color: #3fb950;
+  }
+
+  /* ── Buttons ─────────────────────────────────────────────── */
+  .btn-row { display: grid; gap: 8px; margin-bottom: 10px; }
+  .btn-row-2 { grid-template-columns: 1fr 1fr; }
+  button {
+    padding: 10px 12px;
+    border: none;
+    border-radius: 7px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  button:active { transform: scale(0.97); }
+  button:hover  { opacity: 0.85; }
+
+  .btn-explore   { background: #238636; color: #fff; }
+  .btn-return    { background: #1f6feb; color: #fff; }
+  .btn-fast      { background: #9e6a03; color: #fff; }
+  .btn-stop      { background: #da3633; color: #fff; font-size: 1rem; }
+  .btn-reset     { background: #30363d; color: #e6edf3; }
+  .btn-manual    { background: #6e40c9; color: #fff; }
+  .btn-dir       { background: #21262d; color: #e6edf3; font-size: 1.2rem; }
+  .btn-apply     { background: #0d419d; color: #fff; width: 100%; margin-top: 8px; }
+
+  /* ── D-pad ───────────────────────────────────────────────── */
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(3, 52px);
+    gap: 4px;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  .dpad button { padding: 0; border-radius: 8px; font-size: 1.3rem; height: 52px; }
+  .dpad .empty { background: transparent; cursor: default; }
+
+  /* ── PID sliders ────────────────────────────────────────── */
+  .pid-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .pid-row label { width: 24px; font-size: 0.85rem; color: #58a6ff; font-weight: 700; }
+  .pid-row input[type=number] {
+    width: 72px;
+    padding: 5px 6px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    color: #e6edf3;
+    font-size: 0.85rem;
+  }
+  .pid-row input[type=range] {
+    flex: 1;
+    accent-color: #58a6ff;
+  }
+
+  /* ── Speed slider ───────────────────────────────────────── */
+  .speed-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .speed-row input[type=range] { flex: 1; accent-color: #3fb950; }
+  .speed-row input[type=number] {
+    width: 70px;
+    padding: 5px 6px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    color: #e6edf3;
+    font-size: 0.85rem;
+  }
+
+  /* ── Connection indicator ───────────────────────────────── */
+  #conn-dot {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: #da3633;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  #conn-dot.ok { background: #3fb950; }
+</style>
+</head>
+<body>
+
+<h1>🤖 MicroMouse Control Dashboard</h1>
+
+<div class="dashboard">
+
+  <!-- ══════════════ LEFT COLUMN ══════════════ -->
+  <div>
+    <!-- Maze Canvas -->
+    <div class="card" style="margin-bottom:12px;">
+      <h2>Maze Map <span style="font-weight:400;color:#3fb950" id="maze-stats"></span></h2>
+      <canvas id="maze-canvas" width="480" height="480" title="Click to toggle flood-fill overlay"></canvas>
+      <div id="maze-info">
+        🟡 Robot position &nbsp;|&nbsp; 🟢 Goal &nbsp;|&nbsp; 🔵 Visited &nbsp;|&nbsp;
+        Click canvas to toggle numbers
+      </div>
+    </div>
+
+    <!-- ToF Sensors -->
+    <div class="card" style="margin-bottom:12px;">
+      <h2>Distance Sensors (4× VL53L0X ToF)</h2>
+      <!-- Robot silhouette view -->
+      <div style="text-align:center;font-size:0.7rem;color:#8b949e;margin-bottom:6px;">
+        ← Matches your actual sensor layout →
+      </div>
+      <div class="sensor-group">
+        <div class="sensor">
+          <label>◀ LEFT</label>
+          <div class="bar-wrap"><div class="bar-fill" id="bar-left"  style="height:0%;background:#58a6ff"></div></div>
+          <span class="val" id="val-left">— mm</span>
+        </div>
+        <div class="sensor">
+          <label>↖ FL 45°</label>
+          <div class="bar-wrap"><div class="bar-fill" id="bar-fl" style="height:0%;background:#f85149"></div></div>
+          <span class="val" id="val-fl">— mm</span>
+        </div>
+        <div class="sensor">
+          <label>FR 45° ↗</label>
+          <div class="bar-wrap"><div class="bar-fill" id="bar-fr" style="height:0%;background:#f85149"></div></div>
+          <span class="val" id="val-fr">— mm</span>
+        </div>
+        <div class="sensor">
+          <label>RIGHT ▶</label>
+          <div class="bar-wrap"><div class="bar-fill" id="bar-right" style="height:0%;background:#58a6ff"></div></div>
+          <span class="val" id="val-right">— mm</span>
+        </div>
+      </div>
+      <!-- Wall indicator row -->
+      <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:4px;">
+        <span id="wi-left"  style="font-size:0.72rem;padding:2px 8px;border-radius:10px;background:#21262d">L: open</span>
+        <span id="wi-front" style="font-size:0.72rem;padding:2px 8px;border-radius:10px;background:#21262d">F: open</span>
+        <span id="wi-right" style="font-size:0.72rem;padding:2px 8px;border-radius:10px;background:#21262d">R: open</span>
+      </div>
+    </div>
+
+    <!-- Telemetry -->
+    <div class="card">
+      <h2>Live Telemetry &nbsp;<span id="conn-dot"></span><span id="conn-label" style="font-size:0.75rem;color:#8b949e">connecting...</span></h2>
+      <div class="telem-grid">
+        <div class="telem-item">
+          <div class="label">Left Speed</div>
+          <div class="value" id="t-lspd">0 tps</div>
+        </div>
+        <div class="telem-item">
+          <div class="label">Right Speed</div>
+          <div class="value" id="t-rspd">0 tps</div>
+        </div>
+        <div class="telem-item">
+          <div class="label">Position</div>
+          <div class="value" id="t-pos">(0, 0)</div>
+        </div>
+        <div class="telem-item">
+          <div class="label">Heading</div>
+          <div class="value" id="t-hdg">North</div>
+        </div>
+        <div class="telem-item">
+          <div class="label">L Error</div>
+          <div class="value" id="t-lerr" style="color:#f0883e">0</div>
+        </div>
+        <div class="telem-item">
+          <div class="label">R Error</div>
+          <div class="value" id="t-rerr" style="color:#f0883e">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ RIGHT COLUMN ══════════════ -->
+  <div>
+
+    <!-- Mode & Status -->
+    <div class="card" style="margin-bottom:12px;">
+      <h2>Status</h2>
+      <div class="status-row">
+        <span class="pill" id="pill-mode">IDLE</span>
+        <span class="pill" id="pill-goal">No Goal</span>
+        <span class="pill" id="pill-maze">Map: Empty</span>
+      </div>
+      <!-- Maze control buttons -->
+      <div class="btn-row">
+        <button class="btn-explore" onclick="cmd('explore')">🔍 Start Exploration</button>
+      </div>
+      <div class="btn-row btn-row-2">
+        <button class="btn-return"  onclick="cmd('return_home')">🏠 Return Home</button>
+        <button class="btn-fast"    onclick="cmd('fast_run')">⚡ Fast Run</button>
+      </div>
+      <div class="btn-row btn-row-2">
+        <button class="btn-reset"   onclick="cmd('reset')">🔄 Reset Map</button>
+        <button class="btn-stop"    onclick="cmd('stop')">⏹ STOP</button>
+      </div>
+    </div>
+
+    <!-- Manual Control -->
+    <div class="card" style="margin-bottom:12px;">
+      <h2>Manual Control</h2>
+      <div class="dpad">
+        <div class="empty"></div>
+        <button class="btn-dir" onclick="cmd('forward')"   title="Forward">▲</button>
+        <div class="empty"></div>
+
+        <button class="btn-dir" onclick="cmd('turn_left')"  title="Turn Left">◀</button>
+        <button class="btn-stop" onclick="cmd('stop')"      title="Stop" style="border-radius:50%">■</button>
+        <button class="btn-dir" onclick="cmd('turn_right')" title="Turn Right">▶</button>
+
+        <div class="empty"></div>
+        <button class="btn-dir" onclick="cmd('backward')"  title="Backward">▼</button>
+        <div class="empty"></div>
+      </div>
+    </div>
+
+    <!-- Speed Control -->
+    <div class="card" style="margin-bottom:12px;">
+      <h2>Speed</h2>
+      <div class="speed-row">
+        <span style="font-size:0.8rem;color:#8b949e;min-width:32px">TPS</span>
+        <input type="range" id="speed-slider" min="50" max="2000" step="25" value="300"
+               oninput="document.getElementById('speed-num').value=this.value; setSpeed();">
+        <input type="number" id="speed-num" min="50" max="2000" value="300"
+               onchange="document.getElementById('speed-slider').value=this.value; setSpeed();">
+      </div>
+      <div style="font-size:0.72rem;color:#8b949e">
+        Explore ≈ 300 tps &nbsp;|&nbsp; Fast Run ≈ 800 tps
+      </div>
+    </div>
+
+    <!-- PID Tuning -->
+    <div class="card">
+      <h2>PID Tuning</h2>
+      <div class="pid-row">
+        <label>Kp</label>
+        <input type="range"  id="kp-slider" min="0" max="5" step="0.01" value="0.5"
+               oninput="document.getElementById('kp-num').value=parseFloat(this.value).toFixed(3)">
+        <input type="number" id="kp-num" step="0.01" value="0.500">
+      </div>
+      <div class="pid-row">
+        <label>Ki</label>
+        <input type="range"  id="ki-slider" min="0" max="2" step="0.005" value="0.05"
+               oninput="document.getElementById('ki-num').value=parseFloat(this.value).toFixed(3)">
+        <input type="number" id="ki-num" step="0.005" value="0.050">
+      </div>
+      <div class="pid-row">
+        <label>Kd</label>
+        <input type="range"  id="kd-slider" min="0" max="1" step="0.001" value="0.01"
+               oninput="document.getElementById('kd-num').value=parseFloat(this.value).toFixed(3)">
+        <input type="number" id="kd-num" step="0.001" value="0.010">
+      </div>
+      <button class="btn-apply" onclick="applyPID()">✔ Apply &amp; Reset Integrals</button>
+    </div>
+
+  </div><!-- end right column -->
+</div><!-- end dashboard -->
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  MicroMouse Dashboard JavaScript
+// ═══════════════════════════════════════════════════════════
+
+const MAZE_SIZE   = 16;
+const WALL_N      = 0x01;
+const WALL_E      = 0x02;
+const WALL_S      = 0x04;
+const WALL_W      = 0x08;
+const VISITED_BIT = 0x10;
+const MODE_NAMES  = ['IDLE', 'EXPLORE', 'RETURN', 'FAST RUN', 'MANUAL'];
+const HDG_NAMES   = ['North ↑', 'East →', 'South ↓', 'West ←'];
+const HDG_DEG     = [0, 90, 180, 270];  // degrees: North=up=0°
+
+let showFlood = false;   // Toggle with canvas click
+let mazeData  = null;    // Latest maze from /maze_data
+
+// ── HTTP helpers ─────────────────────────────────────────────
+function cmd(c) {
+  fetch('/command?cmd=' + c).catch(e => console.warn(e));
+}
+function setSpeed() {
+  const v = document.getElementById('speed-num').value;
+  if (v) fetch('/set_speed?speed=' + v).catch(e => console.warn(e));
+}
+function applyPID() {
+  const kp = document.getElementById('kp-num').value;
+  const ki = document.getElementById('ki-num').value;
+  const kd = document.getElementById('kd-num').value;
+  if (kp !== '' && ki !== '' && kd !== '')
+    fetch(`/update_pid?kp=${kp}&ki=${ki}&kd=${kd}`).catch(e => console.warn(e));
+}
+
+// ── /status polling (200 ms) ──────────────────────────────────
+function updateStatus(d) {
+  // Connection indicator
+  document.getElementById('conn-dot').className   = 'ok';
+  document.getElementById('conn-label').textContent = 'Connected';
+
+  // Telemetry
+  document.getElementById('t-lspd').textContent = d.leftSpeed.toFixed(1) + ' tps';
+  document.getElementById('t-rspd').textContent = d.rightSpeed.toFixed(1) + ' tps';
+  document.getElementById('t-pos').textContent  = `(${d.posX}, ${d.posY})`;
+  document.getElementById('t-hdg').textContent  = HDG_NAMES[d.heading] || '?';
+  document.getElementById('t-lerr').textContent = (d.targetSpeed - d.leftSpeed).toFixed(1);
+  document.getElementById('t-rerr').textContent = (d.targetSpeed - d.rightSpeed).toFixed(1);
+
+  // ToF bars — max display range: side=300mm, diagonal=150mm
+  function setBar(id, barId, mm, maxRange, wallThresh) {
+    const capped = Math.min(mm, maxRange);
+    const pct    = mm > 0 ? (capped / maxRange * 100).toFixed(1) : 0;
+    const wall   = mm > 0 && mm < wallThresh;
+    document.getElementById(id).textContent  = mm > 0 ? mm + ' mm' : '— mm';
+    const bar = document.getElementById(barId);
+    bar.style.height = pct + '%';
+    bar.style.background = wall ? '#f85149' : (mm > 0 ? '#3fb950' : '#8b949e');
+  }
+  setBar('val-left',  'bar-left',  d.tofLeft,       300, 120);
+  setBar('val-fl',    'bar-fl',    d.tofFrontLeft,  150,  90);
+  setBar('val-fr',    'bar-fr',    d.tofFrontRight, 150,  90);
+  setBar('val-right', 'bar-right', d.tofRight,      300, 120);
+
+  // Wall indicators
+  const wallL = d.tofLeft       > 0 && d.tofLeft       < 120;
+  const wallF = (d.tofFrontLeft > 0 && d.tofFrontLeft  < 90) ||
+                (d.tofFrontRight> 0 && d.tofFrontRight  < 90);
+  const wallR = d.tofRight      > 0 && d.tofRight       < 120;
+  function setWallInd(id, hasWall, label) {
+    const el = document.getElementById(id);
+    el.textContent  = label + (hasWall ? ': WALL' : ': open');
+    el.style.background = hasWall ? '#da3633' : '#21262d';
+    el.style.color      = hasWall ? '#fff' : '#8b949e';
+  }
+  setWallInd('wi-left',  wallL, 'L');
+  setWallInd('wi-front', wallF, 'F');
+  setWallInd('wi-right', wallR, 'R');
+
+  // Mode pill
+  const pill = document.getElementById('pill-mode');
+  pill.textContent = MODE_NAMES[d.mode] || 'UNKNOWN';
+  pill.className   = 'pill ' + (['active','green','blue','yellow','active'][d.mode] || '');
+
+  // Goal / maze pills
+  const gPill = document.getElementById('pill-goal');
+  gPill.textContent = d.goalReached ? '★ Goal Reached' : 'No Goal Yet';
+  gPill.className   = 'pill ' + (d.goalReached ? 'green' : '');
+
+  const mPill = document.getElementById('pill-maze');
+  mPill.textContent = d.mazeKnown ? 'Map: Known' : 'Map: Exploring';
+  mPill.className   = 'pill ' + (d.mazeKnown ? 'green' : '');
+
+  // Sync PID inputs (only if not focused)
+  function syncInput(id, sliderId, val) {
+    const el = document.getElementById(id);
+    const sl = document.getElementById(sliderId);
+    if (document.activeElement !== el && document.activeElement !== sl) {
+      el.value = parseFloat(val).toFixed(3);
+      sl.value = val;
+    }
+  }
+  syncInput('kp-num', 'kp-slider', d.kp);
+  syncInput('ki-num', 'ki-slider', d.ki);
+  syncInput('kd-num', 'kd-slider', d.kd);
+
+  // Speed slider sync
+  const sp = document.getElementById('speed-num');
+  const sl = document.getElementById('speed-slider');
+  if (document.activeElement !== sp && document.activeElement !== sl) {
+    sp.value = Math.round(d.targetSpeed);
+    sl.value = Math.round(d.targetSpeed);
+  }
+}
+
+// ── Maze canvas rendering ────────────────────────────────────
+const canvas = document.getElementById('maze-canvas');
+const ctx    = canvas.getContext('2d');
+
+canvas.addEventListener('click', () => { showFlood = !showFlood; drawMaze(); });
+
+function drawMaze() {
+  if (!mazeData) return;
+  const { walls, flood, robotX, robotY, heading, goalX, goalY } = mazeData;
+
+  const W    = canvas.width;
+  const H    = canvas.height;
+  const cell = W / MAZE_SIZE;
+  const wall = 2.5;   // wall thickness px
+
+  ctx.clearRect(0, 0, W, H);
+
+  // ── Cell backgrounds ────────────────────────────────────────
+  for (let y = 0; y < MAZE_SIZE; y++) {
+    for (let x = 0; x < MAZE_SIZE; x++) {
+      const cy   = (MAZE_SIZE - 1 - y) * cell;  // canvas Y flipped
+      const cx   = x * cell;
+      const w    = walls[y][x];
+      const f    = flood[y][x];
+      const vis  = (w & VISITED_BIT) !== 0;
+      const goal = (x === goalX && y === goalY);
+
+      if (goal) {
+        ctx.fillStyle = '#1a4a1a';
+      } else if (vis) {
+        ctx.fillStyle = '#161f2a';
+      } else {
+        ctx.fillStyle = '#0d1117';
+      }
+      ctx.fillRect(cx, cy, cell, cell);
+
+      // Flood-fill heat-map overlay (toggle)
+      if (showFlood && f < 255) {
+        const t   = 1 - f / (MAZE_SIZE * 2);
+        const r   = Math.round(220 * (1 - t));
+        const g2  = Math.round(180 * t);
+        ctx.fillStyle = `rgba(${r},${g2},80,0.35)`;
+        ctx.fillRect(cx + 1, cy + 1, cell - 2, cell - 2);
+
+        // Flood value text
+        ctx.fillStyle   = '#c9d1d9';
+        ctx.font        = `${Math.max(8, cell * 0.28)}px monospace`;
+        ctx.textAlign   = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(f, cx + cell / 2, cy + cell / 2);
+      }
+
+      // Goal marker
+      if (goal) {
+        ctx.fillStyle   = '#3fb950';
+        ctx.font        = `${cell * 0.5}px sans-serif`;
+        ctx.textAlign   = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('★', cx + cell / 2, cy + cell / 2);
+      }
+    }
+  }
+
+  // ── Walls ───────────────────────────────────────────────────
+  ctx.strokeStyle = '#c9d1d9';
+  ctx.lineWidth   = wall;
+  ctx.lineCap     = 'square';
+
+  for (let y = 0; y < MAZE_SIZE; y++) {
+    for (let x = 0; x < MAZE_SIZE; x++) {
+      const cy = (MAZE_SIZE - 1 - y) * cell;
+      const cx = x * cell;
+      const w  = walls[y][x];
+
+      if (w & WALL_N) { // North wall → top edge of cell in canvas
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + cell, cy); ctx.stroke();
+      }
+      if (w & WALL_S) { // South wall → bottom edge
+        ctx.beginPath(); ctx.moveTo(cx, cy + cell); ctx.lineTo(cx + cell, cy + cell); ctx.stroke();
+      }
+      if (w & WALL_W) { // West wall → left edge
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy + cell); ctx.stroke();
+      }
+      if (w & WALL_E) { // East wall → right edge
+        ctx.beginPath(); ctx.moveTo(cx + cell, cy); ctx.lineTo(cx + cell, cy + cell); ctx.stroke();
+      }
+    }
+  }
+
+  // ── Robot arrow ──────────────────────────────────────────────
+  const rx = robotX * cell + cell / 2;
+  const ry = (MAZE_SIZE - 1 - robotY) * cell + cell / 2;
+  const r  = cell * 0.32;
+
+  ctx.save();
+  ctx.translate(rx, ry);
+  ctx.rotate(HDG_DEG[heading] * Math.PI / 180);  // rotate to heading
+  // Arrow triangle: tip at top (North = up in canvas)
+  ctx.beginPath();
+  ctx.moveTo(0, -r);          // tip
+  ctx.lineTo(r * 0.6, r * 0.7);
+  ctx.lineTo(-r * 0.6, r * 0.7);
+  ctx.closePath();
+  ctx.fillStyle   = '#ffd700';
+  ctx.strokeStyle = '#0d1117';
+  ctx.lineWidth   = 1.5;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // ── Maze stats ───────────────────────────────────────────────
+  let visited = 0;
+  for (let y = 0; y < MAZE_SIZE; y++)
+    for (let x = 0; x < MAZE_SIZE; x++)
+      if (walls[y][x] & VISITED_BIT) visited++;
+  document.getElementById('maze-stats').textContent =
+    `— ${visited}/${MAZE_SIZE*MAZE_SIZE} cells visited`;
+}
+
+// ── Poll /status every 200 ms ───────────────────────────────
+setInterval(() => {
+  fetch('/status')
+    .then(r => r.json())
+    .then(updateStatus)
+    .catch(() => {
+      document.getElementById('conn-dot').className = '';
+      document.getElementById('conn-label').textContent = 'Disconnected';
+    });
+}, 200);
+
+// ── Poll /maze_data every 500 ms ────────────────────────────
+setInterval(() => {
+  fetch('/maze_data')
+    .then(r => r.json())
+    .then(d => { mazeData = d; drawMaze(); })
+    .catch(e => console.warn('maze_data:', e));
+}, 500);
+
+// ── Keyboard shortcuts ───────────────────────────────────────
+document.addEventListener('keydown', e => {
+  switch (e.key) {
+    case 'ArrowUp':    case 'w': cmd('forward');    e.preventDefault(); break;
+    case 'ArrowDown':  case 's': cmd('backward');   e.preventDefault(); break;
+    case 'ArrowLeft':  case 'a': cmd('turn_left');  e.preventDefault(); break;
+    case 'ArrowRight': case 'd': cmd('turn_right'); e.preventDefault(); break;
+    case ' ':                    cmd('stop');        e.preventDefault(); break;
+  }
+});
+</script>
+</body>
+</html>
